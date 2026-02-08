@@ -1,0 +1,485 @@
+"use client";
+
+import { Canvas, useThree } from "@react-three/fiber";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import * as THREE from "three";
+import { gsap } from "../lib/gsap";
+import AnimatedHeading from "./AnimatedHeading";
+
+const useReducedMotion = () => {
+  const [reduced, setReduced] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReduced(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  return reduced;
+};
+
+function Scene({ triggerRef }: { triggerRef: React.RefObject<HTMLDivElement> }) {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const ringRef = useRef<THREE.Mesh>(null);
+  const groupRef = useRef<THREE.Group>(null);
+  const { camera, invalidate } = useThree();
+  const reducedMotion = useReducedMotion();
+  const [curve, tubeGeometry, edgesGeometry] = useMemo(() => {
+    class LemniscateCurve extends THREE.Curve<THREE.Vector3> {
+      getPoint(t: number) {
+        const a = 1.1;
+        const angle = t * Math.PI * 2;
+        const denom = 1 + Math.sin(angle) * Math.sin(angle);
+        const x = (a * Math.cos(angle)) / denom;
+        const y = (a * Math.sin(angle) * Math.cos(angle)) / denom;
+        return new THREE.Vector3(x, y, Math.sin(angle) * 0.25);
+      }
+    }
+
+    const c = new LemniscateCurve();
+    const tube = new THREE.TubeGeometry(c, 180, 0.22, 18, true);
+    const edges = new THREE.EdgesGeometry(tube, 12);
+    return [c, tube, edges] as const;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      tubeGeometry.dispose();
+      edgesGeometry.dispose();
+    };
+  }, [edgesGeometry, tubeGeometry]);
+
+  useLayoutEffect(() => {
+    if (!triggerRef.current || !meshRef.current || reducedMotion) return;
+
+    const context = gsap.context(() => {
+      const timeline = gsap.timeline({
+        defaults: { ease: "power2.out" },
+        scrollTrigger: {
+          trigger: triggerRef.current,
+          start: "top top",
+          end: "bottom+=100% top",
+          scrub: true,
+          invalidateOnRefresh: true
+        }
+      });
+
+      timeline.to(
+        camera.position,
+        {
+          z: 4.5,
+          onUpdate: () => {
+            camera.updateProjectionMatrix();
+            invalidate();
+          }
+        },
+        0
+      );
+
+      timeline.to(
+        meshRef.current.rotation,
+        {
+          x: Math.PI * 0.25,
+          y: Math.PI * 1.35,
+          onUpdate: invalidate
+        },
+        0
+      );
+
+      if (ringRef.current) {
+        timeline.to(
+          ringRef.current.rotation,
+          {
+            z: Math.PI * 0.6,
+            onUpdate: invalidate
+          },
+          0
+        );
+      }
+    });
+
+    return () => context.revert();
+  }, [camera, invalidate, reducedMotion, triggerRef]);
+
+  useEffect(() => {
+    if (!triggerRef.current || !groupRef.current || reducedMotion) return;
+
+    const target = triggerRef.current;
+    const group = groupRef.current;
+
+    const rotateX = gsap.quickTo(group.rotation, "x", {
+      duration: 0.6,
+      ease: "power2.out",
+      onUpdate: invalidate
+    });
+    const rotateY = gsap.quickTo(group.rotation, "y", {
+      duration: 0.6,
+      ease: "power2.out",
+      onUpdate: invalidate
+    });
+
+    const onMove = (event: PointerEvent) => {
+      const bounds = target.getBoundingClientRect();
+      const x = (event.clientX - bounds.left) / bounds.width - 0.5;
+      const y = (event.clientY - bounds.top) / bounds.height - 0.5;
+      rotateX(-y * 0.12);
+      rotateY(x * 0.12);
+    };
+
+    target.addEventListener("pointermove", onMove);
+
+    return () => target.removeEventListener("pointermove", onMove);
+  }, [invalidate, reducedMotion, triggerRef]);
+
+  return (
+    <group ref={groupRef}>
+      <mesh ref={meshRef} geometry={tubeGeometry}>
+        <meshStandardMaterial
+          color="#7ce7d9"
+          metalness={0.55}
+          roughness={0.22}
+          emissive="#15504a"
+          emissiveIntensity={0.35}
+        />
+      </mesh>
+      <lineSegments>
+        <primitive object={edgesGeometry} attach="geometry" />
+        <lineBasicMaterial color="#e7f9f6" transparent opacity={0.18} />
+      </lineSegments>
+      <mesh ref={ringRef} rotation={[Math.PI / 2.6, 0, 0]}>
+        <torusGeometry args={[1.55, 0.03, 12, 120]} />
+        <meshStandardMaterial
+          color="#ff8a4d"
+          emissive="#f46a2e"
+          emissiveIntensity={0.6}
+          roughness={0.2}
+          metalness={0.1}
+        />
+      </mesh>
+    </group>
+  );
+}
+
+export default function Hero3D() {
+  const sectionRef = useRef<HTMLDivElement>(null);
+  const reducedMotion = useReducedMotion();
+  const [soundOn, setSoundOn] = useState(false);
+  const audioRef = useRef<null | {
+    ctx: AudioContext;
+    gain: GainNode;
+    osc: OscillatorNode | null;
+    filter: BiquadFilterNode | null;
+  }>(null);
+
+  useEffect(() => {
+    if (!sectionRef.current) return;
+
+    const stats = Array.from(
+      sectionRef.current.querySelectorAll<HTMLElement>("[data-count]")
+    );
+
+    if (reducedMotion) {
+      stats.forEach((el) => {
+        const target = Number(el.dataset.count ?? "0");
+        el.textContent = `${target}${el.dataset.suffix ?? ""}`;
+      });
+      return;
+    }
+
+    const context = gsap.context(() => {
+      stats.forEach((el) => {
+        const target = Number(el.dataset.count ?? "0");
+        const suffix = el.dataset.suffix ?? "";
+
+        gsap.fromTo(
+          el,
+          { innerText: 0 },
+          {
+            innerText: target,
+            duration: 1.4,
+            ease: "power2.out",
+            snap: { innerText: 1 },
+            scrollTrigger: {
+              trigger: el,
+              start: "top 85%"
+            },
+            onUpdate: () => {
+              el.textContent = `${Math.round(
+                Number(el.innerText)
+              )}${suffix}`;
+            }
+          }
+        );
+      });
+    }, sectionRef);
+
+    return () => context.revert();
+  }, [reducedMotion]);
+
+  const initAudio = async () => {
+    if (!audioRef.current) {
+      const ctx = new AudioContext();
+      const gain = ctx.createGain();
+      gain.gain.value = 0.035;
+      const filter = ctx.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.value = 800;
+      filter.connect(gain);
+      gain.connect(ctx.destination);
+      audioRef.current = { ctx, gain, osc: null, filter };
+    }
+
+    const { ctx } = audioRef.current;
+    if (ctx.state === "suspended") {
+      await ctx.resume();
+    }
+  };
+
+  const playClick = async (nextState: boolean) => {
+    await initAudio();
+    if (!audioRef.current) return;
+    const { ctx, gain, filter } = audioRef.current;
+    const osc = ctx.createOscillator();
+    osc.type = "triangle";
+    osc.frequency.value = nextState ? 880 : 220;
+    osc.connect(filter ?? gain);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.12);
+  };
+
+  useEffect(() => {
+    const startAmbient = async () => {
+      await initAudio();
+      if (!audioRef.current) return;
+      const { ctx, gain, filter } = audioRef.current;
+      if (audioRef.current.osc) return;
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = 180;
+      osc.connect(filter ?? gain);
+      osc.start();
+      audioRef.current.osc = osc;
+    };
+
+    const stopAmbient = () => {
+      if (!audioRef.current?.osc) return;
+      const { ctx, osc } = audioRef.current;
+      osc.stop(ctx.currentTime + 0.05);
+      osc.disconnect();
+      audioRef.current.osc = null;
+    };
+
+    const updateByScroll = () => {
+      if (!audioRef.current?.osc) return;
+      const doc = document.documentElement;
+      const scrollTop = window.scrollY;
+      const maxScroll = doc.scrollHeight - window.innerHeight;
+      const progress = maxScroll > 0 ? scrollTop / maxScroll : 0;
+      const base = 180;
+      const range = 60;
+      audioRef.current.osc.frequency.value = base + range * progress;
+      const targetGain = 0.03 + 0.01 * Math.sin(progress * Math.PI);
+      audioRef.current.gain.gain.setTargetAtTime(
+        targetGain,
+        audioRef.current.ctx.currentTime,
+        0.15
+      );
+    };
+
+    if (soundOn) {
+      startAmbient();
+      updateByScroll();
+      window.addEventListener("scroll", updateByScroll, { passive: true });
+    } else {
+      stopAmbient();
+      window.removeEventListener("scroll", updateByScroll);
+    }
+
+    return () => {
+      window.removeEventListener("scroll", updateByScroll);
+    };
+  }, [soundOn]);
+
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        if (audioRef.current.osc) {
+          audioRef.current.osc.stop();
+          audioRef.current.osc.disconnect();
+          audioRef.current.osc = null;
+        }
+        if (audioRef.current.filter) {
+          audioRef.current.filter.disconnect();
+          audioRef.current.filter = null;
+        }
+        audioRef.current.gain.disconnect();
+        audioRef.current.ctx.close();
+        audioRef.current = null;
+      }
+    };
+  }, []);
+
+  return (
+    <section
+      ref={sectionRef}
+      id="top"
+      className="relative flex min-h-screen items-center overflow-hidden bg-hero-gradient"
+    >
+      <div className="pointer-events-none absolute inset-0 bg-grid-fade opacity-50" />
+      <div className="noise-overlay absolute inset-0" />
+
+      <div className="relative z-10 mx-auto flex w-full max-w-6xl flex-col gap-10 px-6 py-20 md:px-12">
+        <header className="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-ink-300">
+          <div className="flex items-center gap-3">
+            <span className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-transparent shadow-card">
+              <span className="absolute inset-0 rounded-2xl bg-[conic-gradient(from_120deg,rgba(124,231,217,0.65),rgba(255,138,77,0.5),rgba(124,231,217,0.4))] opacity-70 blur-[2px]" />
+              <span className="absolute inset-[2px] rounded-2xl bg-transparent" />
+              <span className="absolute inset-0 rounded-2xl border border-white/15" />
+              <span className="absolute inset-0 opacity-70 animate-[spin_10s_linear_infinite]">
+                <span className="absolute left-1/2 top-0 h-2 w-2 -translate-x-1/2 rounded-full bg-accent-300 shadow-glow" />
+              </span>
+              <svg
+                viewBox="0 0 48 48"
+                className="relative h-7 w-7 text-ink-50"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="square"
+                strokeLinejoin="miter"
+              >
+                <path d="M11 34V14l12 16V14" />
+                <path d="M29 14l10 20" />
+                <path d="M39 14l-10 20" />
+              </svg>
+            </span>
+            <div>
+              <p className="font-display text-sm font-semibold text-ink-50">
+                NEXORA
+              </p>
+              <p className="text-[10px] tracking-[0.3em] text-ink-400">
+                CREATIVE TECH
+              </p>
+            </div>
+          </div>
+          <nav className="hidden items-center gap-4 rounded-full border border-white/10 bg-white/5 px-5 py-2 text-[10px] shadow-card backdrop-blur md:flex">
+            <a href="#about" className="nav-link">
+              About
+            </a>
+            <a href="#services" className="nav-link">
+              Services
+            </a>
+            <a href="#process" className="nav-link">
+              Process
+            </a>
+            <a href="#cases" className="nav-link">
+              Case Studies
+            </a>
+            <a
+              href="#contact"
+              className="rounded-full border border-accent-400/40 px-3 py-1 text-[10px] font-semibold text-accent-300 transition hover:border-accent-300/80 hover:text-accent-200"
+            >
+              Contact
+            </a>
+          </nav>
+        </header>
+
+        <div className="flex flex-col gap-6">
+          <p className="text-xs uppercase tracking-[0.4em] text-ink-200">
+            Interactive Tech Studio
+          </p>
+          <AnimatedHeading
+            as="h1"
+            text="Build experiences that feel engineered, cinematic, and beautifully fast."
+            className="max-w-3xl font-display text-4xl font-semibold leading-tight text-ink-50 md:text-6xl"
+          />
+          <p className="max-w-2xl text-base leading-relaxed text-ink-200 md:text-lg">
+            We partner with product teams to design, prototype, and ship immersive
+            web platforms. Our focus is performance-first motion, thoughtful 3D,
+            and interfaces that convert ambition into clarity.
+          </p>
+        <div className="flex flex-wrap gap-4">
+          <a
+            href="#contact"
+            className="rounded-full bg-accent-500 px-6 py-3 text-sm font-semibold text-ink-900 shadow-glow transition hover:translate-y-[-1px]"
+          >
+            Start a Project
+          </a>
+          <a
+            href="#cases"
+            className="rounded-full border border-white/20 px-6 py-3 text-sm font-semibold text-ink-100 transition hover:border-white/40"
+          >
+            View Case Studies
+          </a>
+          <button
+            type="button"
+            onClick={async () => {
+              const next = !soundOn;
+              await playClick(next);
+              setSoundOn(next);
+            }}
+            className="rounded-full border border-white/20 px-6 py-3 text-xs font-semibold uppercase tracking-[0.3em] text-ink-100 transition hover:border-white/40"
+            data-no-barba
+          >
+            Sound {soundOn ? "On" : "Off"}
+          </button>
+        </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-8 text-sm text-ink-300">
+          <div>
+            <p
+              className="text-2xl font-semibold text-ink-50"
+              data-count="12"
+              data-suffix="+"
+            >
+              12+
+            </p>
+            <p>Launches delivered since 2022</p>
+          </div>
+          <div>
+            <p
+              className="text-2xl font-semibold text-ink-50"
+              data-count="98"
+              data-suffix="%"
+            >
+              98%
+            </p>
+            <p>Performance scores above 90</p>
+          </div>
+          <div>
+            <p
+              className="text-2xl font-semibold text-ink-50"
+              data-count="24"
+              data-suffix="+"
+            >
+              24+
+            </p>
+            <p>Clients across SaaS & fintech</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="absolute inset-0 pointer-events-none">
+        {reducedMotion ? (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="h-56 w-56 rounded-full bg-accent-500/15 blur-[1px]" />
+          </div>
+        ) : (
+          <Canvas
+            camera={{ position: [0, 0, 7], fov: 45 }}
+            dpr={[1, 1.6]}
+            gl={{ antialias: true, alpha: true }}
+            frameloop="demand"
+          >
+            <ambientLight intensity={0.45} />
+            <directionalLight position={[3, 3, 4]} intensity={0.7} />
+            <pointLight position={[-4, -2, 3]} intensity={0.6} color="#7ce7d9" />
+            <Scene triggerRef={sectionRef} />
+          </Canvas>
+        )}
+      </div>
+    </section>
+  );
+}
