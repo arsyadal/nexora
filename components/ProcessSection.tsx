@@ -23,8 +23,9 @@ export default function ProcessSection() {
   const trackRef = useRef<HTMLDivElement>(null);
   const reducedMotion = useReducedMotion();
   const { scrollYProgress } = useScroll({
-    target: sectionRef,
-    offset: ["start 80%", "end 20%"]
+    target: trackRef,
+    offset: ["start 80%", "end 20%"],
+    layoutEffect: false
   });
   const lineScale = useTransform(scrollYProgress, [0, 1], [0, 1]);
 
@@ -32,7 +33,7 @@ export default function ProcessSection() {
     <section
       ref={sectionRef}
       id="process"
-      className="bg-ink-900 section-pad"
+      className="relative bg-ink-900 section-pad"
     >
       <div className="container-shell mb-12">
         <p className="text-xs uppercase tracking-[0.4em] text-ink-300">

@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { useRef, useState, useEffect } from "react";
 import AnimatedHeading from "./AnimatedHeading";
+import P5Backdrop from "./P5Backdrop";
 
 const useReducedMotion = () => {
   const [reduced, setReduced] = useState(false);
@@ -41,7 +42,9 @@ export default function AboutSection() {
       id="about"
       className="bg-ink-900 section-pad"
     >
-      <div className="container-shell flex max-w-6xl flex-col gap-8">
+      <div className="container-shell relative flex max-w-6xl flex-col gap-8 overflow-hidden rounded-3xl border border-white/5 bg-ink-900/50 p-8 md:p-10">
+        <P5Backdrop />
+        <div className="relative flex flex-col gap-8">
         <motion.p
           className="text-xs uppercase tracking-[0.4em] text-ink-300"
           {...revealProps}
@@ -169,6 +172,7 @@ export default function AboutSection() {
             </div>
           </motion.div>
         </motion.div>
+        </div>
       </div>
     </section>
   );

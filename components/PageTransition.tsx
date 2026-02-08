@@ -59,6 +59,7 @@ export default function PageTransition() {
       const barba = (await import("@barba/core")).default;
 
       barba.init({
+        sync: true,
         transitions: [
           {
             name: "fade",

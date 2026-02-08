@@ -24,6 +24,7 @@ function Scene({ triggerRef }: { triggerRef: React.RefObject<HTMLDivElement> }) 
   const meshRef = useRef<THREE.Mesh>(null);
   const ringRef = useRef<THREE.Mesh>(null);
   const groupRef = useRef<THREE.Group>(null);
+  const shaderRef = useRef<THREE.ShaderMaterial>(null);
   const { camera, invalidate } = useThree();
   const reducedMotion = useReducedMotion();
   const [curve, tubeGeometry, edgesGeometry] = useMemo(() => {
@@ -50,6 +51,52 @@ function Scene({ triggerRef }: { triggerRef: React.RefObject<HTMLDivElement> }) 
       edgesGeometry.dispose();
     };
   }, [edgesGeometry, tubeGeometry]);
+
+  const shader = useMemo(
+    () => ({
+      uniforms: {
+        uProgress: { value: 0 },
+        uAccent: { value: new THREE.Color("#7ce7d9") },
+        uEmber: { value: new THREE.Color("#ff8a4d") }
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        varying vec2 vUv;
+        uniform float uProgress;
+        uniform vec3 uAccent;
+        uniform vec3 uEmber;
+        float random(vec2 st) {
+          return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453);
+        }
+        float noise(vec2 st) {
+          vec2 i = floor(st);
+          vec2 f = fract(st);
+          float a = random(i);
+          float b = random(i + vec2(1.0, 0.0));
+          float c = random(i + vec2(0.0, 1.0));
+          float d = random(i + vec2(1.0, 1.0));
+          vec2 u = f * f * (3.0 - 2.0 * f);
+          return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+        }
+        void main() {
+          float wave = smoothstep(0.0, 1.0, vUv.y + uProgress * 0.25);
+          vec3 color = mix(uEmber, uAccent, wave);
+          float n = noise(vUv * 6.0 + uProgress * 0.2);
+          float alpha = (0.16 + n * 0.06) * (1.0 - vUv.y);
+          float dist = distance(vUv, vec2(0.5));
+          float mask = smoothstep(0.65, 0.2, dist);
+          gl_FragColor = vec4(color, alpha * mask);
+        }
+      `
+    }),
+    []
+  );
 
   useLayoutEffect(() => {
     if (!triggerRef.current || !meshRef.current || reducedMotion) return;
@@ -98,6 +145,17 @@ function Scene({ triggerRef }: { triggerRef: React.RefObject<HTMLDivElement> }) 
           0
         );
       }
+
+      if (shaderRef.current) {
+        timeline.to(
+          shaderRef.current.uniforms.uProgress,
+          {
+            value: 1,
+            onUpdate: invalidate
+          },
+          0
+        );
+      }
     });
 
     return () => context.revert();
@@ -135,19 +193,37 @@ function Scene({ triggerRef }: { triggerRef: React.RefObject<HTMLDivElement> }) 
 
   return (
     <group ref={groupRef}>
+      <mesh position={[0, 0, -1.6]}>
+        <planeGeometry args={[4.6, 3.2, 1, 1]} />
+        <shaderMaterial ref={shaderRef} args={[shader]} transparent />
+      </mesh>
       <mesh ref={meshRef} geometry={tubeGeometry}>
-        <meshStandardMaterial
-          color="#7ce7d9"
-          metalness={0.55}
-          roughness={0.22}
-          emissive="#15504a"
-          emissiveIntensity={0.35}
+        <meshPhysicalMaterial
+          color="#c8fff6"
+          metalness={0.2}
+          roughness={0.15}
+          clearcoat={1}
+          clearcoatRoughness={0.05}
+          iridescence={0.8}
+          iridescenceIOR={1.6}
+          iridescenceThicknessRange={[200, 600]}
+          emissive="#1a6b64"
+          emissiveIntensity={0.25}
         />
       </mesh>
       <lineSegments>
         <primitive object={edgesGeometry} attach="geometry" />
         <lineBasicMaterial color="#e7f9f6" transparent opacity={0.18} />
       </lineSegments>
+      <mesh rotation={[Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[1.8, 2.05, 64]} />
+        <meshBasicMaterial
+          color="#7ce7d9"
+          transparent
+          opacity={0.2}
+          blending={THREE.AdditiveBlending}
+        />
+      </mesh>
       <mesh ref={ringRef} rotation={[Math.PI / 2.6, 0, 0]}>
         <torusGeometry args={[1.55, 0.03, 12, 120]} />
         <meshStandardMaterial
@@ -164,6 +240,7 @@ function Scene({ triggerRef }: { triggerRef: React.RefObject<HTMLDivElement> }) 
 
 export default function Hero3D() {
   const sectionRef = useRef<HTMLDivElement>(null);
+  const textRef = useRef<HTMLDivElement>(null);
   const reducedMotion = useReducedMotion();
   const [soundOn, setSoundOn] = useState(false);
   const audioRef = useRef<null | {
@@ -172,6 +249,7 @@ export default function Hero3D() {
     osc: OscillatorNode | null;
     filter: BiquadFilterNode | null;
   }>(null);
+  const toneRef = useRef<any>(null);
 
   useEffect(() => {
     if (!sectionRef.current) return;
@@ -247,9 +325,28 @@ export default function Hero3D() {
     osc.connect(filter ?? gain);
     osc.start();
     osc.stop(ctx.currentTime + 0.12);
+
+    try {
+      const mod = await import("tone");
+      const Tone = mod.Tone ?? mod.default ?? mod;
+      if (Tone?.Synth) {
+        if (!toneRef.current) {
+          toneRef.current = new Tone.Synth({
+            oscillator: { type: "sine" },
+            envelope: { attack: 0.01, decay: 0.2, sustain: 0.1, release: 0.4 }
+          }).toDestination();
+          toneRef.current.volume.value = -12;
+        }
+        if (Tone.start) await Tone.start();
+        toneRef.current.triggerAttackRelease(nextState ? "E5" : "A3", "8n");
+      }
+    } catch {
+      // fallback already handled by Web Audio
+    }
   };
 
   useEffect(() => {
+    document.documentElement.dataset.sound = soundOn ? "on" : "off";
     const startAmbient = async () => {
       await initAudio();
       if (!audioRef.current) return;
@@ -303,6 +400,25 @@ export default function Hero3D() {
   }, [soundOn]);
 
   useEffect(() => {
+    if (!sectionRef.current || !textRef.current || reducedMotion) return;
+    const target = sectionRef.current;
+    const text = textRef.current;
+    const moveX = gsap.quickTo(text, "x", { duration: 0.6, ease: "power2.out" });
+    const moveY = gsap.quickTo(text, "y", { duration: 0.6, ease: "power2.out" });
+
+    const onMove = (event: PointerEvent) => {
+      const bounds = target.getBoundingClientRect();
+      const x = (event.clientX - bounds.left) / bounds.width - 0.5;
+      const y = (event.clientY - bounds.top) / bounds.height - 0.5;
+      moveX(x * 14);
+      moveY(y * 10);
+    };
+
+    target.addEventListener("pointermove", onMove);
+    return () => target.removeEventListener("pointermove", onMove);
+  }, [reducedMotion]);
+
+  useEffect(() => {
     return () => {
       if (audioRef.current) {
         if (audioRef.current.osc) {
@@ -318,6 +434,10 @@ export default function Hero3D() {
         audioRef.current.ctx.close();
         audioRef.current = null;
       }
+      if (toneRef.current) {
+        toneRef.current.dispose();
+        toneRef.current = null;
+      }
     };
   }, []);
 
@@ -330,7 +450,10 @@ export default function Hero3D() {
       <div className="pointer-events-none absolute inset-0 bg-grid-fade opacity-50" />
       <div className="noise-overlay absolute inset-0" />
 
-      <div className="relative z-10 mx-auto flex w-full max-w-6xl flex-col gap-10 px-6 py-20 md:px-12">
+      <div
+        ref={textRef}
+        className="relative z-10 mx-auto flex w-full max-w-6xl flex-col gap-10 px-6 py-20 md:px-12"
+      >
         <header className="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-ink-300">
           <div className="flex items-center gap-3">
             <span className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-transparent shadow-card">
@@ -373,7 +496,7 @@ export default function Hero3D() {
             <a href="#process" className="nav-link">
               Process
             </a>
-            <a href="#cases" className="nav-link">
+            <a href="/case-studies" className="nav-link">
               Case Studies
             </a>
             <a
@@ -407,7 +530,7 @@ export default function Hero3D() {
             Start a Project
           </a>
           <a
-            href="#cases"
+            href="/case-studies"
             className="rounded-full border border-white/20 px-6 py-3 text-sm font-semibold text-ink-100 transition hover:border-white/40"
           >
             View Case Studies
@@ -473,12 +596,19 @@ export default function Hero3D() {
             gl={{ antialias: true, alpha: true }}
             frameloop="demand"
           >
-            <ambientLight intensity={0.45} />
-            <directionalLight position={[3, 3, 4]} intensity={0.7} />
-            <pointLight position={[-4, -2, 3]} intensity={0.6} color="#7ce7d9" />
+          <ambientLight intensity={0.45} />
+          <directionalLight position={[3, 3, 4]} intensity={0.7} />
+          <pointLight position={[-4, -2, 3]} intensity={0.6} color="#7ce7d9" />
+          <pointLight position={[4, 2, -3]} intensity={0.4} color="#ff8a4d" />
             <Scene triggerRef={sectionRef} />
           </Canvas>
         )}
+      </div>
+      <div className="absolute bottom-10 left-1/2 flex -translate-x-1/2 flex-col items-center gap-2 text-xs uppercase tracking-[0.3em] text-ink-300">
+        <span>Scroll</span>
+        <div className="h-10 w-[2px] overflow-hidden rounded-full bg-white/10">
+          <div className="h-1/2 w-full animate-[loadingbar_1.6s_ease-in-out_infinite] rounded-full bg-accent-400/70" />
+        </div>
       </div>
     </section>
   );

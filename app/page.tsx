@@ -4,6 +4,8 @@ import ServicesSection from "../components/ServicesSection";
 import ProcessSection from "../components/ProcessSection";
 import CaseStudies from "../components/CaseStudies";
 import ContactSection from "../components/ContactSection";
+import PixiParticles from "../components/PixiParticles";
+import Footer from "../components/Footer";
 
 const Hero3D = dynamic(() => import("../components/Hero3D"), {
   ssr: false,
@@ -58,11 +60,15 @@ export default function Home() {
         <div className="absolute right-[-120px] top-[30%] h-72 w-72 rounded-full bg-ember-500/10 blur-[120px]" />
       </div>
       <Hero3D />
+      <div className="pointer-events-none absolute inset-x-0 top-[100vh] bottom-0 -z-10">
+        <PixiParticles />
+      </div>
       <AboutSection />
       <ServicesSection />
       <ProcessSection />
       <CaseStudies />
       <ContactSection />
+      <Footer />
     </main>
   );
 }

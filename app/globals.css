@@ -80,6 +80,23 @@ section {
   }
 }
 
+@keyframes soundPulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    filter: blur(0px);
+  }
+  50% {
+    opacity: 0.6;
+    filter: blur(1px);
+  }
+}
+
+html[data-sound="on"] .sound-reactive {
+  animation: soundPulse 2.6s ease-in-out infinite;
+  opacity: 0.6;
+}
+
 ::selection {
   background: rgba(63, 211, 197, 0.35);
   color: #0f1118;
