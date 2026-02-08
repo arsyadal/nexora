@@ -63,7 +63,7 @@ export default function PageTransition() {
         transitions: [
           {
             name: "fade",
-            async leave(data) {
+            async leave(data: any) {
               if (reducedMotion) return;
               await gsap.to(data.current.container, {
                 opacity: 0,
@@ -71,7 +71,7 @@ export default function PageTransition() {
                 ease: "power2.out"
               });
             },
-            async enter(data) {
+            async enter(data: any) {
               if (reducedMotion) return;
               gsap.set(data.next.container, { opacity: 0 });
               await gsap.to(data.next.container, {
@@ -82,7 +82,8 @@ export default function PageTransition() {
             }
           }
         ],
-        prevent: ({ el }) => el?.hasAttribute("data-no-barba") ?? false
+        prevent: ({ el }: { el?: HTMLElement | null }) =>
+          el?.hasAttribute("data-no-barba") ?? false
       });
 
       cleanup = () => barba.destroy();

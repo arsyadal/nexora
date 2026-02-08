@@ -119,9 +119,6 @@ export default function CaseStudies() {
                 scale: 1.01,
                 boxShadow: "0 26px 70px rgba(20, 21, 30, 0.35)"
               }}
-              initial="rest"
-              animate="rest"
-              whileHover="hover"
               onClick={(event) => {
                 event.preventDefault();
                 setActive(index);
@@ -134,10 +131,7 @@ export default function CaseStudies() {
                 <div className="flex flex-col items-center gap-4 text-center">
                   <motion.div
                     className="flex h-20 w-20 items-center justify-center rounded-full border border-white/15 bg-white/5 text-accent-300"
-                    variants={{
-                      rest: { scale: 1, rotate: 0 },
-                      hover: { scale: 1.06, rotate: -4 }
-                    }}
+                    whileHover={{ scale: 1.06, rotate: -4 }}
                     transition={{ duration: 0.35, ease: "easeOut" }}
                   >
                     {study.icon}

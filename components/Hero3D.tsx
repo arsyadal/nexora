@@ -28,19 +28,19 @@ function Scene({ triggerRef }: { triggerRef: React.RefObject<HTMLDivElement> }) 
   const { camera, invalidate } = useThree();
   const reducedMotion = useReducedMotion();
   const [curve, tubeGeometry, edgesGeometry] = useMemo(() => {
-    class LemniscateCurve extends THREE.Curve<THREE.Vector3> {
-      getPoint(t: number) {
-        const a = 1.1;
-        const angle = t * Math.PI * 2;
-        const denom = 1 + Math.sin(angle) * Math.sin(angle);
-        const x = (a * Math.cos(angle)) / denom;
-        const y = (a * Math.sin(angle) * Math.cos(angle)) / denom;
-        return new THREE.Vector3(x, y, Math.sin(angle) * 0.25);
-      }
+    const points: THREE.Vector3[] = [];
+    const segments = 200;
+    const a = 1.1;
+    for (let i = 0; i <= segments; i += 1) {
+      const t = (i / segments) * Math.PI * 2;
+      const denom = 1 + Math.sin(t) * Math.sin(t);
+      const x = (a * Math.cos(t)) / denom;
+      const y = (a * Math.sin(t) * Math.cos(t)) / denom;
+      points.push(new THREE.Vector3(x, y, Math.sin(t) * 0.25));
     }
 
-    const c = new LemniscateCurve();
-    const tube = new THREE.TubeGeometry(c, 180, 0.22, 18, true);
+    const c = new THREE.CatmullRomCurve3(points, true, "catmullrom", 0.5);
+    const tube = new THREE.TubeGeometry(c, 200, 0.22, 18, true);
     const edges = new THREE.EdgesGeometry(tube, 12);
     return [c, tube, edges] as const;
   }, []);
@@ -125,15 +125,17 @@ function Scene({ triggerRef }: { triggerRef: React.RefObject<HTMLDivElement> }) 
         0
       );
 
-      timeline.to(
-        meshRef.current.rotation,
-        {
-          x: Math.PI * 0.25,
-          y: Math.PI * 1.35,
-          onUpdate: invalidate
-        },
-        0
-      );
+      if (meshRef.current) {
+        timeline.to(
+          meshRef.current.rotation,
+          {
+            x: Math.PI * 0.25,
+            y: Math.PI * 1.35,
+            onUpdate: invalidate
+          },
+          0
+        );
+      }
 
       if (ringRef.current) {
         timeline.to(
@@ -328,7 +330,7 @@ export default function Hero3D() {
 
     try {
       const mod = await import("tone");
-      const Tone = mod.Tone ?? mod.default ?? mod;
+      const Tone = (mod as unknown as { default?: any }).default ?? mod;
       if (Tone?.Synth) {
         if (!toneRef.current) {
           toneRef.current = new Tone.Synth({

@@ -26,7 +26,11 @@ export default function PixiParticles() {
 
       hostRef.current.appendChild(app.canvas);
 
-      const particles: any[] = [];
+      const particles: Array<{
+        dot: any;
+        vx: number;
+        vy: number;
+      }> = [];
       const count = 40;
       for (let i = 0; i < count; i += 1) {
         const dot = new PIXI.Graphics();
@@ -37,19 +41,19 @@ export default function PixiParticles() {
         dot.x = Math.random() * app.renderer.width;
         dot.y = Math.random() * app.renderer.height;
         dot.alpha = 0.3 + Math.random() * 0.5;
-        dot.vx = (Math.random() - 0.5) * 0.4;
-        dot.vy = (Math.random() - 0.5) * 0.4;
+        const vx = (Math.random() - 0.5) * 0.4;
+        const vy = (Math.random() - 0.5) * 0.4;
         app.stage.addChild(dot);
-        particles.push(dot);
+        particles.push({ dot, vx, vy });
       }
 
       if (!prefersReduced) {
         app.ticker.add(() => {
           for (const p of particles) {
-            p.x += p.vx;
-            p.y += p.vy;
-            if (p.x < 0 || p.x > app.renderer.width) p.vx *= -1;
-            if (p.y < 0 || p.y > app.renderer.height) p.vy *= -1;
+            p.dot.x += p.vx;
+            p.dot.y += p.vy;
+            if (p.dot.x < 0 || p.dot.x > app.renderer.width) p.vx *= -1;
+            if (p.dot.y < 0 || p.dot.y > app.renderer.height) p.vy *= -1;
           }
         });
       }
